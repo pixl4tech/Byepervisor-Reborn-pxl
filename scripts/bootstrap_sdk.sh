@@ -20,8 +20,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SDK_DIR="$REPO_ROOT/sdk"
 SDK_ZIP_URL="https://github.com/ps5-payload-dev/sdk/releases/download/v0.44/ps5-payload-sdk.zip"
 LLVM_VERSION="18.1.8"
-BOTTLE_TAG="18.1.8-1"
-BOTTLE_SHA256="c9daaee40a1b1c85a35af2a64c3577257740554df1d8bbf629103a9994b288b4"
+# 18.1.8-2 is the last rebuild that ships an arm64_sonoma bottle (rebuild 3
+# dropped sonoma). Pinned blob sha256 for integrity.
+BOTTLE_TAG="18.1.8-2"
+BOTTLE_SHA256="84f895cfadaeba96a43db53c1bea77b6ab731326719fe6021ef9d30d55695620"
 LLVM_TREE="$SDK_DIR/llvm18/llvm@18/$LLVM_VERSION"
 BREW_PREFIX="/opt/homebrew"
 
@@ -46,15 +48,11 @@ if [ -x "$LLVM_TREE/bin/clang" ]; then
   log "llvm@18 $LLVM_VERSION present, skipping"
 else
   log "fetching llvm@18 $LLVM_VERSION bottle (arm64/sonoma) from ghcr ..."
-  # resolve the real bottle tag from the formula API (fallback: pinned)
-  BOTTLE_TAG="$(curl -fsSL "https://formulae.brew.sh/api/formula/llvm@18.json" \
-      | python3 -c 'import sys,json;print(json.load(sys.stdin)["stable"]["bottle"]["tag"])' \
-      2>/dev/null || echo "$BOTTLE_TAG")"
   log "bottle tag: $BOTTLE_TAG"
 
   TOKEN="$(curl -fsSL 'https://ghcr.io/token?scope=repository:homebrew/core/llvm/18:pull' \
           | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
-  # 1) index manifest -> arm64/darwin sub-manifest digest
+  # 1) index manifest -> arm64/sonoma (macOS 14) sub-manifest digest
   DIGEST="$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
            -H 'Accept: application/vnd.oci.image.index.v1+json' \
            "https://ghcr.io/v2/homebrew/core/llvm/18/manifests/$BOTTLE_TAG" \
@@ -63,7 +61,10 @@ import sys, json
 idx = json.load(sys.stdin)
 for m in idx["manifests"]:
     p = m.get("platform", {})
-    if p.get("architecture") == "arm64" and p.get("os") == "darwin":
+    ver = str(p.get("os.version", ""))
+    if (p.get("architecture") == "arm64"
+            and p.get("os") == "darwin"
+            and ver.startswith("macOS 14")):
         print(m["digest"]); break')"
   # 2) sub-manifest -> bottle layer blob URL (curl: system CA store)
   MANIFEST="$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
