@@ -54,31 +54,27 @@ else
 
   TOKEN="$(curl -fsSL 'https://ghcr.io/token?scope=repository:homebrew/core/llvm/18:pull' \
           | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
-  BOTTLE_URL="$(
-    curl -fsSL -H "Authorization: Bearer $TOKEN" \
-         -H 'Accept: application/vnd.oci.image.index.v1+json' \
-         "https://ghcr.io/v2/homebrew/core/llvm/18/manifests/$BOTTLE_TAG" \
-    | python3 -c '
+  # 1) index manifest -> arm64/darwin sub-manifest digest
+  DIGEST="$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
+           -H 'Accept: application/vnd.oci.image.index.v1+json' \
+           "https://ghcr.io/v2/homebrew/core/llvm/18/manifests/$BOTTLE_TAG" \
+      | python3 -c '
 import sys, json
 idx = json.load(sys.stdin)
 for m in idx["manifests"]:
     p = m.get("platform", {})
     if p.get("architecture") == "arm64" and p.get("os") == "darwin":
-        print(m["digest"]); break
-' | sed 's/^sha256:\(.*\)$/sha256:\1/' |
-    python3 -c '
-import sys, json, urllib.request
-digest = sys.stdin.read().strip()
-req = urllib.request.Request(
-    "https://ghcr.io/v2/homebrew/core/llvm/18/manifests/" + digest,
-    headers={"Authorization": "Bearer "'"$TOKEN"'"',
-             "Accept": "application/vnd.oci.image.manifest.v1+json"})
-man = json.load(urllib.request.urlopen(req))
+        print(m["digest"]); break')"
+  # 2) sub-manifest -> bottle layer blob URL (curl: system CA store)
+  MANIFEST="$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
+           -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+           "https://ghcr.io/v2/homebrew/core/llvm/18/manifests/$DIGEST")"
+  BOTTLE_URL="$(echo "$MANIFEST" | python3 -c '
+import sys, json
+man = json.load(sys.stdin)
 layer = man["layers"][0]
-print("https://ghcr.io/v2/homebrew/core/llvm/18/blobs/" + layer["digest"]))
-' 2>/dev/null || true
-  )"
-  if [ -z "${BOTTLE_URL:-}" ]; then
+print("https://ghcr.io/v2/homebrew/core/llvm/18/blobs/" + layer["digest"])')"
+  if [ -z "${BOTTLE_URL:-}" ] || [ "$BOTTLE_URL" = "None" ]; then
     echo "ERROR: could not resolve the bottle URL (tag $BOTTLE_TAG)" >&2
     echo "       install with: brew install llvm@18  (if a bottle exists)" >&2
     exit 1
