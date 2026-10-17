@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap SDK (sdk/)
+        run: scripts/bootstrap_sdk.sh
+
+      - name: Build all variants
+        run: |
+          export PS5_PAYLOAD_SDK=$PWD/sdk/ps5-payload-sdk
+          export LLVM_CONFIG=$PWD/sdk/llvm18/llvm@18/18.1.8/bin/llvm-config
+          make all-variants
+
+      - name: Unit tests (builds + ps5_run verdict logic)
+        run: |
+          export PS5_PAYLOAD_SDK=$PWD/sdk/ps5-payload-sdk
+          export LLVM_CONFIG=$PWD/sdk/llvm18/llvm@18/18.1.8/bin/llvm-config
+          make test
+
+      - name: Static audit (11.60 offsets/gadgets)
+        run: python3 scripts/audit_11_60.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: byepv-pxl-artifacts
+          path: |
+            build/debug/byepv-pxl-v*.elf
+            build/release/byepv-pxl-v*.elf
+            build/standalone/byepv-pxl-v*.elf
+            scripts/ps5_run.py

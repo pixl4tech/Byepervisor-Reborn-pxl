@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap SDK (sdk/)
+        run: scripts/bootstrap_sdk.sh
+
+      - name: Build all variants
+        run: |
+          export PS5_PAYLOAD_SDK=$PWD/sdk/ps5-payload-sdk
+          export LLVM_CONFIG=$PWD/sdk/llvm18/llvm@18/18.1.8/bin/llvm-config
+          make all-variants
+
+      - name: Unit tests
+        run: |
+          export PS5_PAYLOAD_SDK=$PWD/sdk/ps5-payload-sdk
+          export LLVM_CONFIG=$PWD/sdk/llvm18/llvm@18/18.1.8/bin/llvm-config
+          make test
+
+      - name: SHA256SUMS
+        run: |
+          shasum -a 256 \
+            build/debug/byepv-pxl-v*.elf \
+            build/release/byepv-pxl-v*.elf \
+            build/standalone/byepv-pxl-v*.elf > SHA256SUMS
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/debug/byepv-pxl-v*.elf
+            build/release/byepv-pxl-v*.elf
+            build/standalone/byepv-pxl-v*.elf
+            scripts/ps5_run.py
+            docs/network-run.md
+            README.md
+            SHA256SUMS
+          body: |
+            ## Byepervisor-pxl ${{ github.ref_name }}
+
+            HV-bypass exploit for PS5 11.60 (regular). See README.
+
+            ### Artifacts
+            | File | Variant |
+            |---|---|
+            | `byepv-pxl-v${{ github.ref_name#v }}.elf` (debug) | USB log + live TCP stream |
+            | `byepv-pxl-v${{ github.ref_name#v }}.elf` (release) | no USB log |
+            | `byepv-pxl-v${{ github.ref_name#v }}.elf` (standalone) | no USB, non-blocking stdout, no host needed |
+
+            (file prefixes in the release assets keep the variant name in
+            the directory part — see `SHA256SUMS` for exact paths)
+
+            ### Quick start
+            ```sh
+            nc -q0 10.10.10.2 9021 < byepv-pxl-v<ver>.elf
+            # or: python3 ps5_run.py --no-setup  (debug variant, live logs)
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

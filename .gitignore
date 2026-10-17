@@ -1,0 +1,32 @@
+# --- toolchain / SDK (installed by scripts/bootstrap_sdk.sh) ---
+sdk/
+
+# --- build artifacts ---
+build/
+*.elf
+*.o
+break_hv_payload/break_hv.bin
+break_hv_payload/break_hv.elf
+break_hv_payload/*.o
+include/version.h
+
+# --- run logs (Mac-side session logs + console USB logs kept here) ---
+ps5-run-logs/
+
+# --- local research notes (not committed) ---
+analysis/
+
+# --- vendor reference (see README: gzimbric/ps5-hv-bypass-porting) ---
+tools/ps5-hv-bypass-porting/
+
+# --- python ---
+__pycache__/
+*.pyc
+
+# --- tooling junk ---
+.trunk/logs/
+.trunk/out/
+.trunk/notifications/
+.DS_Store
+*~
+.trunk/
