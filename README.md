@@ -137,4 +137,4 @@ Thanks to the authors of the projects this implementation is built on:
 
 ## License
 
-GPL-3.0-or-later (inherited from the upstream Makefile header).
+GPL-3.0-or-later — see [LICENSE](LICENSE).

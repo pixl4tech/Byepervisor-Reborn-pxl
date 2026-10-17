@@ -60,3 +60,15 @@ nc -q0 10.10.10.2 9021 < build/standalone/byepv-pxl-v0.1.0.elf
 - after every run the hook is restored (next debug run forensics shows
   `gate ... ist=4`, IST6 slots zero, state 0);
 - the HV stays broken across runs (`already compromised` path).
+
+## Results (v0.1.0, 2026-10-17, PS5 11.60 regular 0x840f80)
+
+| Variant | Run | Result |
+|---|---|---|
+| debug | scripted `ps5_run.py` (fresh exploit: arm → rest → wake) | PASS — success notification, `verdict=SUCCESS reconnects=0`, USB log written |
+| debug | scripted re-run (idempotency) | PASS — `Hypervisor is already compromised`, `.text` dump, `verdict=SUCCESS` |
+| release | scripted `ps5_run.py --elf build/release/...` | PASS — `no USB log file` banner, `already compromised`, `verdict=SUCCESS`, no USB log created |
+| standalone | scripted `ps5_run.py --elf build/standalone/...` | PASS — `no USB log file` banner, `already compromised`, `verdict=SUCCESS`, no USB log created |
+
+All three variants hardware-validated. Hook state restored after every run;
+HV stays compromised across runs (idempotent re-entry).
