@@ -1,0 +1,3 @@
+[submodule "apps/pxlview/third_party/SDL2"]
+	path = apps/pxlview/third_party/SDL2
+	url = https://github.com/ps5-payload-dev/SDL.git

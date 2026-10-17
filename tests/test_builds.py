@@ -90,5 +90,49 @@ class TestBuilds(unittest.TestCase):
         self.assertIn(f'PXEL_VERSION "{VERSION}"', vh)
 
 
+class TestPxlviewAudit(unittest.TestCase):
+    """pxlview source invariants (no SDK needed)."""
+
+    SRC = REPO_ROOT / "apps" / "pxlview" / "src"
+
+    def test_sources_present(self):
+        for name in ("main.c", "kmem.c", "panels.c", "console_ui.c",
+                     "notify.c"):
+            self.assertTrue((self.SRC / name).exists(), f"missing {name}")
+        self.assertTrue((REPO_ROOT / "apps" / "pxlview" / "PLAN.md").exists())
+
+    def test_readonly_kernel_access(self):
+        """pxlview must never write kernel memory."""
+        banned = ("kernel_copyin", "kernel_setlong", "kernel_setint",
+                  "kernel_setshort", "kernel_setchar")
+        for p in self.SRC.glob("*.c"):
+            text = p.read_text()
+            for bad in banned:
+                self.assertNotIn(bad, text,
+                                 f"{p.name}: kernel write call: {bad}")
+
+
+@unittest.skipIf(sdk_env() is None,
+                 "SDK toolchain not installed (scripts/bootstrap_sdk.sh)")
+class TestPxlviewBuild(unittest.TestCase):
+    """pxlview ELF build (static SDL2 from the submodule)."""
+
+    def test_pxlview_elf_built(self):
+        env = sdk_env()
+        r = subprocess.run(["make"], cwd=REPO_ROOT / "apps" / "pxlview",
+                           env=env, capture_output=True, text=True,
+                           timeout=1800)
+        self.assertEqual(r.returncode, 0,
+                         f"pxlview build failed:\n{r.stdout}\n{r.stderr}")
+        elf = (REPO_ROOT / "apps" / "pxlview" / "build"
+               / f"pxlview-v{VERSION}.elf")
+        self.assertTrue(elf.exists())
+        data = elf.read_bytes()
+        self.assertEqual(data[:4], b"\x7fELF")
+        self.assertEqual(data[18], 62, "not x86-64")
+        self.assertLess(elf.stat().st_size, 8 * 1024 * 1024,
+                        "pxlview ELF implausibly large")
+
+
 if __name__ == "__main__":
     unittest.main()

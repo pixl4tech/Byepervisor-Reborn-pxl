@@ -31,3 +31,4 @@ __pycache__/
 *~
 .trunk/
 break_hv_payload/break_hv.h
+apps/pxlview/third_party/SDL2/build-ps5/

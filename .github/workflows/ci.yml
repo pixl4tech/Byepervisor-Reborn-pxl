@@ -10,15 +10,18 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Bootstrap SDK (sdk/)
         run: scripts/bootstrap_sdk.sh
 
-      - name: Build all variants
+      - name: Build all variants + pxlview
         run: |
           export PS5_PAYLOAD_SDK=$PWD/sdk/ps5-payload-sdk
           export LLVM_CONFIG=$PWD/sdk/llvm18/llvm@18/18.1.8/bin/llvm-config
           make all-variants
+          make pxlview
 
       - name: Unit tests (builds + ps5_run verdict logic)
         run: |
@@ -37,4 +40,5 @@ jobs:
             build/debug/byepv-pxl-v*.elf
             build/release/byepv-pxl-v*.elf
             build/standalone/byepv-pxl-v*.elf
+            apps/pxlview/build/pxlview-v*.elf
             scripts/ps5_run.py

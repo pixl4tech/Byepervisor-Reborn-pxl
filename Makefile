@@ -89,6 +89,10 @@ all-variants:
 	$(MAKE) VARIANT=release
 	$(MAKE) VARIANT=standalone
 
+# pxlview — read-only kernel/HV inspector with on-screen UI (apps/pxlview)
+pxlview:
+	$(MAKE) -C apps/pxlview
+
 clean:
 	rm -rf build
 	rm -f $(VERSION_H)
@@ -109,4 +113,4 @@ debug: all
 	-ex "set remote exec-file /data/byepv-pxl.elf" \
 	-ex "start"
 
-.PHONY: all release standalone all-variants clean test deploy debug
+.PHONY: all release standalone all-variants pxlview clean test deploy debug
