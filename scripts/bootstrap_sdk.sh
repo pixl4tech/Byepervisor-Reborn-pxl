@@ -80,7 +80,8 @@ print("https://ghcr.io/v2/homebrew/core/llvm/18/blobs/" + layer["digest"])')"
     exit 1
   fi
   log "downloading bottle: $BOTTLE_URL"
-  curl -fL --retry 3 -o /tmp/llvm18.bottle.tar.gz "$BOTTLE_URL"
+  curl -fL --retry 3 -H "Authorization: Bearer $TOKEN" \
+      -o /tmp/llvm18.bottle.tar.gz "$BOTTLE_URL"
   echo "$BOTTLE_SHA256  /tmp/llvm18.bottle.tar.gz" | shasum -a 256 -c -
   mkdir -p "$SDK_DIR/llvm18"
   tar -xzf /tmp/llvm18.bottle.tar.gz -C "$SDK_DIR/llvm18"
