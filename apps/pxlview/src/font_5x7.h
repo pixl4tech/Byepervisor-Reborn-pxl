@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #define FONT_W      5
-#define FONT_H      7
+#define FONT_H      5   /* classic 5x7 font stores 5 rows (top/bottom blank) */
 
 static const uint8_t font_5x7[256][5] = {
     {0x00,0x00,0x00,0x00,0x00},
