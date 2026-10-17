@@ -18,9 +18,10 @@ from pathlib import Path
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--ap-bin", default="break_hv_payload/break_hv.bin")
-ap.add_argument("--ap-elf", default="break_hv_payload/break_hv.elf")
-ap.add_argument("--outer-elf", default="byepervisor_reborn.elf")
-ap.add_argument("--objdump", default="llvm-objdump")
+ap.add_argument("--ap-elf", default="break_hv_payload/break_hv.o")
+ap.add_argument("--outer-elf", default="build/debug/byepv-pxl-latest.elf")
+ap.add_argument("--objdump",
+                default="sdk/llvm18/llvm@18/18.1.8/bin/llvm-objdump")
 args = ap.parse_args()
 
 ap_bin = Path(args.ap_bin).read_bytes()
