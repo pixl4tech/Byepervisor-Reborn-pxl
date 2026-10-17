@@ -13,7 +13,7 @@ The script is idempotent and installs:
 
 - `sdk/ps5-payload-sdk` — [ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk)
   v0.44 (release zip);
-- `sdk/llvm18/llvm@18/18.1.8` — Homebrew `llvm@18` bottle (arm64/sonoma,
+- `sdk/llvm18/llvm@18/18.1.8` — Homebrew `llvm@18` bottle (arm64,
   pinned sha256), with install names patched to `/opt/homebrew` and
   **ad-hoc re-signed** (required on arm64 macOS — an invalidated code
   signature makes dyld hang on load).
