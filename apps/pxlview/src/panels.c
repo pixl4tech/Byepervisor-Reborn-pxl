@@ -1,8 +1,11 @@
 #include "panels.h"
+#include "kmem.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <ps5/kernel.h>
 
 int pxl_append(pxl_ctx_t *ctx, const char *fmt, ...)
 {
@@ -33,7 +36,21 @@ int pxl_append(pxl_ctx_t *ctx, const char *fmt, ...)
     return 0;
 }
 
-int panel_ktext(pxl_ctx_t *ctx)   { (void)ctx; return 0; } /* M3 */
+int panel_ktext(pxl_ctx_t *ctx)
+{
+    uint8_t buf[64];
+    char fmt[512];
+
+    if (pxl_append(ctx, "== P1: kernel .text, first 64 bytes (xotext) ==\n"))
+        return -1;
+    if (kmem_read((uint64_t)KERNEL_ADDRESS_TEXT_BASE, buf, sizeof(buf)) != 0) {
+        pxl_append(ctx, "  [read failed]\n");
+        return 0;
+    }
+    kmem_hexdump_fmt(buf, sizeof(buf), fmt, sizeof(fmt));
+    return pxl_append(ctx, "%s\n", fmt);
+}
+
 int panel_hv(pxl_ctx_t *ctx)      { (void)ctx; return 0; } /* M3 */
 int panel_procs(pxl_ctx_t *ctx)   { (void)ctx; return 0; } /* M3 */
 int panel_nor(pxl_ctx_t *ctx)     { (void)ctx; return 0; } /* M3 */

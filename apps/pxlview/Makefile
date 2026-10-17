@@ -17,6 +17,7 @@ LATEST   := $(BUILD)/pxlview-latest.elf
 SDL2_DIR := third_party/SDL2
 SDL2_BLD := $(SDL2_DIR)/build-ps5
 SDL2_A   := $(SDL2_BLD)/libSDL2.a
+SDL2_PATCH := patches/sdl2-ps5-videout-open.patch
 
 ifdef PS5_PAYLOAD_SDK
     include $(PS5_PAYLOAD_SDK)/toolchain/prospero.mk
@@ -26,7 +27,7 @@ endif
 
 # pxlview has no inline-asm single-stepping / HV hook, so -O2 is safe here
 # (unlike the byepv-pxl payload which must stay -O0).
-CFLAGS += -O2 -Wall -Werror -Wno-unused-parameter -Isrc
+CFLAGS += -O2 -Wall -Werror -Wno-unused-parameter -Isrc -I$(SDL2_DIR)/include
 LDFLAGS += -L$(SDL2_BLD)
 
 SRCS := src/main.c src/kmem.c src/panels.c src/console_ui.c src/notify.c
@@ -34,16 +35,28 @@ SRCS := src/main.c src/kmem.c src/panels.c src/console_ui.c src/notify.c
 all: $(ELF)
 
 # One-time static SDL2 build with the prospero toolchain. Flags mirror the
-# port's tested build-scripts/ps5-payload-sdk.sh.
-$(SDL2_A): $(SDL2_DIR)/CMakeLists.txt
+# port's tested build-scripts/ps5-payload-sdk.sh (which sources prospero.sh
+# for the cross CC/CXX - a bare cmake would pick up the host compiler).
+$(SDL2_A): $(SDL2_DIR)/CMakeLists.txt $(SDL2_PATCH)
 	@echo "building static SDL2 (first time, takes a few minutes) ..."
+	@cd $(CURDIR)/$(SDL2_DIR) && \
+	  if git apply --check $(CURDIR)/$(SDL2_PATCH) 2>/dev/null; then \
+	    git apply $(CURDIR)/$(SDL2_PATCH); \
+	  else echo "[pxlview] SDL2 patch already applied"; fi
+	@. $(PS5_PAYLOAD_SDK)/toolchain/prospero.sh && \
 	cmake -DCMAKE_BUILD_TYPE=Release -DSDL_OPENGL=YES -DSDL_LOADSO=YES \
-	      -B $(SDL2_BLD) -S $(SDL2_DIR)
+	      -DPS5=1 -DCMAKE_SYSTEM_NAME=Linux -DSDL_AUDIO=OFF \
+	      -DCMAKE_C_COMPILER=$${CC} -DCMAKE_CXX_COMPILER=$${CXX} \
+	      -B $(SDL2_BLD) -S $(SDL2_DIR) && \
 	$(MAKE) -C $(SDL2_BLD)
+
+# System libs pulled in by the SDL PS5 video/joystick/keyboard drivers.
+SCE_LIBS := -lSceVideoOut -lScePad -lSceKeyboard -lSceImeDialog \
+            -lSceUserService -lSceSystemService
 
 $(ELF): $(SRCS) $(SDL2_A)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(SRCS) $(SDL2_A)
+	$(CC) $(CFLAGS) -o $@ $(SRCS) $(SDL2_A) $(SCE_LIBS)
 	ln -sf pxlview-v$(VERSION).elf $(LATEST)
 	@echo "built: $@ (version=$(VERSION))"
 
@@ -51,4 +64,9 @@ clean:
 	rm -rf $(BUILD)
 	rm -rf $(SDL2_BLD)
 
-.PHONY: all clean
+diag:
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -o $(BUILD)/pxlview-diag.elf src/diag.c -lSceVideoOut
+	@echo "built: $(BUILD)/pxlview-diag.elf"
+
+.PHONY: all clean diag

@@ -1,0 +1,27 @@
+diff --git a/src/video/ps5/SDL_ps5video.c b/src/video/ps5/SDL_ps5video.c
+index a62be0e..fe6e4c2 100644
+--- a/src/video/ps5/SDL_ps5video.c
++++ b/src/video/ps5/SDL_ps5video.c
+@@ -145,7 +145,7 @@ static int PS5_SetDisplayMode(_THIS, SDL_VideoDisplay * display,
+     if(device_data->handle >= 0) {
+         sceVideoOutClose(device_data->handle);
+     }
+-    device_data->handle = sceVideoOutOpen(0xff, 0, 0, NULL);
++    device_data->handle = sceVideoOutOpen(0xff, 1, 0, NULL);
+ 
+     if (sceKernelCreateEqueue(&device_data->evt_queue, "flip queue")) {
+         return SDL_SetError("sceKernelCreateEqueue: %s", strerror(errno));
+@@ -203,11 +203,11 @@ static int PS5_VideoInit(_THIS)
+     memset(&vattr, 0, sizeof(vattr));
+ 
+     sceSystemServiceHideSplashScreen();
+-    device_data->handle = sceVideoOutOpen(0xff, 0, 0, NULL);
++    device_data->handle = sceVideoOutOpen(0xff, 1, 0, NULL);
+     if (device_data->handle < 0) {
+         return SDL_SetError("sceVideoOutOpen: %s", strerror(errno));
+     }
+-    device_data->memsize = 0x4000000;
++    device_data->memsize = 0x1000000;
+     if (sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
+                                           &device_data->paddr)) {
+         return SDL_SetError("sceKernelAllocateMainDirectMemory: %s",
