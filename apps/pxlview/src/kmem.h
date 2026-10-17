@@ -38,4 +38,10 @@ int kmem_set_system_authid(void);
 /* Restore the authid saved by kmem_set_system_authid(). No-op if not set. */
 void kmem_restore_authid(void);
 
+/* Mount-jail escape: set our proc rootdir to the kernel root vnode so
+ * paths from the VSH namespace (e.g. /mnt/nor0) become visible. The
+ * WebKit payload namespace does not mount /mnt/nor0. 0 = ok. One-shot,
+ * not restored (the process dies with the payload). */
+int kmem_set_root_vnode(void);
+
 #endif /* PXL_KMEM_H */

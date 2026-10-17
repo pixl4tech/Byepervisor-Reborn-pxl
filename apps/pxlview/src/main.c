@@ -42,6 +42,11 @@ int main(int argc, char **argv)
     if (kmem_set_system_authid() != 0)
         printf("[pxlview] warning: system authid set failed\n");
 
+    /* Mount-jail escape so /mnt/nor0 (P4) is visible from the WebKit
+     * namespace. One-shot, not restored. */
+    if (kmem_set_root_vnode() != 0)
+        printf("[pxlview] warning: root-vnode escape failed\n");
+
     pxl_ctx_t ctx = {0};
     pxl_summary_t sum;
     if (panels_collect_all(&ctx, &sum) != 0) {

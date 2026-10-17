@@ -49,9 +49,9 @@ $(ELF): $(VERSION_H)
 $(SDL2_A): $(SDL2_DIR)/CMakeLists.txt $(SDL2_PATCH)
 	@echo "building static SDL2 (first time, takes a few minutes) ..."
 	@cd $(CURDIR)/$(SDL2_DIR) && \
-	  if git apply --check $(CURDIR)/$(SDL2_PATCH) 2>/dev/null; then \
-	    git apply $(CURDIR)/$(SDL2_PATCH); \
-	  else echo "[pxlview] SDL2 patch already applied"; fi
+	  git checkout -- . && \
+	  git apply $(CURDIR)/$(SDL2_PATCH) && \
+	  echo "[pxlview] SDL2 patch applied"
 	@. $(PS5_PAYLOAD_SDK)/toolchain/prospero.sh && \
 	cmake -DCMAKE_BUILD_TYPE=Release -DSDL_OPENGL=YES -DSDL_LOADSO=YES \
 	      -DPS5=1 -DCMAKE_SYSTEM_NAME=Linux -DSDL_AUDIO=OFF \

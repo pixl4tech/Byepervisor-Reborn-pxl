@@ -98,3 +98,13 @@ void kmem_restore_authid(void)
     kernel_set_ucred_authid(getpid(), g_saved_authid);
     g_authid_set = 0;
 }
+
+int kmem_set_root_vnode(void)
+{
+    intptr_t root = kernel_get_root_vnode();
+    if (root == 0)
+        return -1;
+    if (kernel_set_proc_rootdir(getpid(), root) != 0)
+        return -1;
+    return 0;
+}

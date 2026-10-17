@@ -14,10 +14,11 @@
 #define PXL_HV_LOADER_PA_REGULAR  0x062800000ULL
 #define PXL_HV_WINDOW             1024          /* bytes read for P2 */
 
-/* struct proc p_comm offset on 11.60. 0 = not found yet: names are
- * printed as '-' and diag7 (src/diag.c) locates the offset on hardware.
- * When set, the value is sanity-checked (printable, NUL within 16B). */
-#define PXL_PROC_P_COMM           0
+/* struct proc p_comm offset on 11.60. Located on hardware 2026-10-18
+ * (pxlview-diag section 3): own proc +0x5dc = "payload.elf" (the ELF
+ * basename elfldr execs). Sanity-checked at runtime (printable, NUL
+ * within 16B). */
+#define PXL_PROC_P_COMM           0x5dc
 #define PXL_PROC_SCAN_MAX         256
 #define PXL_PROC_LIST_MAX         48
 
@@ -157,39 +158,52 @@ int panel_procs(pxl_ctx_t *ctx, pxl_summary_t *sum)
 
 int panel_nor(pxl_ctx_t *ctx, pxl_summary_t *sum)
 {
-    static const char *root = "/mnt/nor0";
-    DIR *d;
+    /* /mnt/nor0 is the NOR firmware partition in the VSH namespace. The
+     * WebKit payload namespace does not mount it (rootdir is already the
+     * kernel root; ucred prison 0 does not help - PS5 per-app mount
+     * trees). /mnt/rnps (ufs.ver/ufs.env/ufs.rev/apps) is the system
+     * partition visible here. */
+    static const char *const paths[] = {
+        "/mnt/nor0", "/mnt/rnps", "/mnt/pfs", "/mnt/rnps2",
+    };
     struct dirent *e;
+    DIR *d;
     int entries = 0;
+    int listed = 0;
 
-    if (pxl_append(ctx, "== P4: NOR flash firmware directory (%s) ==\n", root))
-        return -1;
+    for (size_t i = 0; i < 4 && !listed; i++) {
+        d = opendir(paths[i]);
+        if (!d)
+            continue;
+        listed = 1;
+        if (pxl_append(ctx, "== P4: firmware directory (%s) ==\n", paths[i]))
+            break;
+        while ((e = readdir(d)) != NULL && entries < 48) {
+            if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
+                continue;
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%s", paths[i], e->d_name);
 
-    d = opendir(root);
-    if (!d) {
-        pxl_append(ctx, "  [opendir failed - needs system authid]\n");
+            struct stat st;
+            if (stat(path, &st) == 0) {
+                if (S_ISDIR(st.st_mode))
+                    pxl_append(ctx, "  %-32s <dir>\n", e->d_name);
+                else
+                    pxl_append(ctx, "  %-32s %12llu bytes\n", e->d_name,
+                               (unsigned long long)st.st_size);
+            } else {
+                pxl_append(ctx, "  %-32s (stat failed)\n", e->d_name);
+            }
+            entries++;
+        }
+        closedir(d);
+    }
+
+    if (!listed) {
+        pxl_append(ctx, "== P4: firmware directory ==\n"
+                        "  [none of /mnt/nor0|pfs|rnps|rnps2 visible]\n");
         return 0;
     }
-
-    while ((e = readdir(d)) != NULL && entries < 64) {
-        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
-            continue;
-        char path[512];
-        snprintf(path, sizeof(path), "%s/%s", root, e->d_name);
-
-        struct stat st;
-        if (stat(path, &st) == 0) {
-            if (S_ISDIR(st.st_mode))
-                pxl_append(ctx, "  %-32s <dir>\n", e->d_name);
-            else
-                pxl_append(ctx, "  %-32s %12llu bytes\n", e->d_name,
-                           (unsigned long long)st.st_size);
-        } else {
-            pxl_append(ctx, "  %-32s (stat failed)\n", e->d_name);
-        }
-        entries++;
-    }
-    closedir(d);
     pxl_append(ctx, "  (%d entries)\n", entries);
     if (sum) {
         sum->nor_ok = 1;
