@@ -51,12 +51,11 @@ jobs:
             ### Artifacts
             | File | Variant |
             |---|---|
-            | `byepv-pxl-v${{ github.ref_name#v }}.elf` (debug) | USB log + live TCP stream |
-            | `byepv-pxl-v${{ github.ref_name#v }}.elf` (release) | no USB log |
-            | `byepv-pxl-v${{ github.ref_name#v }}.elf` (standalone) | no USB, non-blocking stdout, no host needed |
+            | `build/debug/byepv-pxl-v<ver>.elf` | USB log + live TCP stream |
+            | `build/release/byepv-pxl-v<ver>.elf` | no USB log |
+            | `build/standalone/byepv-pxl-v<ver>.elf` | no USB, non-blocking stdout, no host needed |
 
-            (file prefixes in the release assets keep the variant name in
-            the directory part — see `SHA256SUMS` for exact paths)
+            See `SHA256SUMS` for exact checksums.
 
             ### Quick start
             ```sh
