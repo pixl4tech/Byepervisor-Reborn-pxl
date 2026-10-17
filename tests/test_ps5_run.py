@@ -30,7 +30,8 @@ def free_port() -> int:
     return p
 
 
-def make_args(port: int, max_reconnects: int = 3) -> SimpleNamespace:
+def make_args(port: int, max_reconnects: int = 3,
+              elf: Path | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         timeout=90.0,
         sleep_max=10.0,
@@ -38,7 +39,7 @@ def make_args(port: int, max_reconnects: int = 3) -> SimpleNamespace:
         stall=5.0,
         ps5_ip="127.0.0.1",
         elf_port=port,
-        elf=FAKE_ELF,
+        elf=elf if elf is not None else FAKE_ELF,
     )
 
 
@@ -73,10 +74,14 @@ class MockElfldr:
 
 
 class TestStreamVerdicts(unittest.TestCase):
-    def _run(self, mode: str, max_reconnects: int = 3
-             ) -> tuple[str, int]:
+    def _run(self, mode: str, max_reconnects: int = 3,
+             pxlview: bool = False) -> tuple[str, int]:
         with MockElfldr(mode) as mock:
             # small fake ELF payload for the upload
+            elf = FAKE_ELF
+            if pxlview:
+                elf = REPO_ROOT / "tests" / "fake_pxlview.elf"
+                elf.write_bytes(b"\x7fELF" + b"\x00" * 1024)
             FAKE_ELF.write_bytes(b"\x7fELF" + b"\x00" * 1024)
             session = ps5_run.Session(
                 Path(tempfile.mktemp(prefix="ps5run_test_")))
@@ -86,11 +91,11 @@ class TestStreamVerdicts(unittest.TestCase):
             try:
                 sock = socket.create_connection(
                     ("127.0.0.1", mock.port), timeout=10)
-                sock.sendall(FAKE_ELF.read_bytes())
+                sock.sendall(elf.read_bytes())
                 sock.shutdown(socket.SHUT_WR)
                 sock.settimeout(1.0)
                 verdict, reconnects = ps5_run.stream(
-                    session, make_args(mock.port, max_reconnects),
+                    session, make_args(mock.port, max_reconnects, elf),
                     sock, watchdog)
             finally:
                 # watchdog is a daemon thread; it dies with the process
@@ -127,6 +132,19 @@ class TestStreamVerdicts(unittest.TestCase):
     def test_quiet_gap_then_success(self):
         verdict, reconnects = self._run("quiet")
         self.assertEqual(verdict, "SUCCESS")
+        self.assertEqual(reconnects, 0)
+
+    def test_pxlview_success_no_resend(self):
+        # pxlview is one-shot: done marker + EOF == SUCCESS, no re-send
+        verdict, reconnects = self._run("pxlview", max_reconnects=2,
+                                        pxlview=True)
+        self.assertEqual(verdict, "SUCCESS")
+        self.assertEqual(reconnects, 0)
+
+    def test_pxlview_kernel_fail(self):
+        verdict, reconnects = self._run("pxlview_fail", max_reconnects=2,
+                                        pxlview=True)
+        self.assertEqual(verdict, "FAIL")
         self.assertEqual(reconnects, 0)
 
 

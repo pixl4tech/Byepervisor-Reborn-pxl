@@ -3,6 +3,35 @@
 **Status:** approved plan (v1, 2026-10-17)
 **Target:** PS5 11.60 regular (0x840f80), payload delivery via elfldr (TCP 9021)
 
+## Status log
+
+| Date | Milestone | State |
+|------|-----------|-------|
+| 2026-10-17 | M0 | done: skeleton, SDL2 submodule, build, read-only audit, CI |
+| 2026-10-18 | M1 | in progress: SDL window + font blitter + P1 built; display blocked on `sceVideoOutRegisterBuffers2: Permission denied` (see below) |
+| — | M2..M5 | code for M2 (scroll/pad) and M3 (P1–P5) written 2026-10-18, pending hardware validation |
+
+**M1 blocker (2026-10-18, ps5-run-logs):**
+`sceVideoOutOpen(0xff,0,..)` → `Device busy` (VSH owns display 0) →
+patch to `(0xff,1,..)` + memsize 64M→16M →
+`sceVideoOutRegisterBuffers2: Permission denied`.
+Hypothesis H1 (implemented): the payload's WebKit ucred lacks system
+authid — `kmem_set_system_authid()` (0x4800000000000007, same as the
+byepv-pxl payload) is now applied at start and restored on exit.
+Hypothesis H2 (implemented): `pxlview-diag.elf` runs a VideoOut
+parameter matrix (memsize × display id) with errno at every step.
+Fallback H3: own raw `libSceVideoOut` + tilemap driver (bypass SDL
+VideoInit).
+
+**Deviations from v1:**
+- font: 5×7 Adafruit glcdfont (`font_5x7.h`) instead of 8×16 VGA —
+  smaller, public domain, 4× scale still crisp at 4K;
+- `kernel_set_ucred_authid` is the one non-kernel-memory mutation
+  (save/restore; documented in `kmem.h`);
+- notify struct aligned to the byepv-pxl validated layout (45+3075);
+- `ps5_run.py` got pxlview markers (`[pxlview] starting/done`, `FAILED`)
+  — one-shot app, no re-send loop.
+
 ## 1. Goal
 
 A standalone helper ELF (`pxlview.elf`) that runs on the console and shows an

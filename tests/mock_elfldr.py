@@ -3,6 +3,7 @@
 
 Usage: mock_elfldr.py <mode> [port]
 Modes: success | arffail | arffail_noclose | quiet | drop
+       | pxlview | pxlview_fail
 """
 import socket, sys, time, threading
 
@@ -63,6 +64,19 @@ ARFAIL = [
     (0.0, "[NOTIFY] [ERROR] Byepervisor Reborn\n11.60 hook arm failed :(\n"),
     (0.0, "elog: log file closed (/mnt/usb0_mock.log)\n"),
 ]
+PXLVIEW_OK = [
+    (0.2, "[pxlview] starting v0.1.0\n"),
+    (0.0, "[pxlview] kernel access ok\n"),
+    (0.0, "[pxlview] collected 1234 bytes of panel text (procs=20 nor=1 hv=1)\n"),
+    (0.0, "[pxlview-ui] window 3840x2160 fmt=0x1620rgb\n"),
+    (3.0, "[pxlview] pxlview v0.1.0: .text=ok 0x57c6bbe8, 20 procs, NOR ok, HV ok, fw 0x11600000\n"),
+    (0.0, "[pxlview] done\n"),
+]
+PXLVIEW_FAIL = [
+    (0.2, "[pxlview] starting v0.1.0\n"),
+    (0.0, "[pxlview] kernel access FAILED\n"),
+    (0.0, "[pxlview] done\n"),
+]
 
 def handle(conn):
     up = drain_upload(conn)
@@ -98,6 +112,11 @@ def handle(conn):
         else:
             stream(conn, HDR[3:] + MID)
             stream(conn, POST_RESUME)
+    elif mode == "pxlview":
+        stream(conn, PXLVIEW_OK)
+    elif mode == "pxlview_fail":
+        # kernel access FAILED is the terminal marker; done marker follows
+        stream(conn, PXLVIEW_FAIL)
     conn.close()
 
 print(f"[mock] listening on 127.0.0.1:{port} mode={mode}", flush=True)

@@ -63,6 +63,13 @@ MARK_ARM_FAIL = "hook arm failed"
 MARK_ERROR = "[NOTIFY] [ERROR]"
 MARK_DONE = "log file closed"          # elog_finish
 
+# pxlview (read-only inspector app) stream markers: the app has no rest
+# mode cycle, so a clean run ends with "[pxlview] done" + EOF and must NOT
+# be re-sent (that looped the launcher during M1 debugging).
+PXL_START = "[pxlview] starting"
+PXL_DONE = "[pxlview] done"
+PXL_FAIL = "FAILED"
+
 
 def ts() -> str:
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -257,6 +264,7 @@ def stream(session: Session, args, sock: socket.socket,
     last_data = time.time()
     gap_warned = False
     tail = b""
+    pxlv = "pxlview" in args.elf.name
 
     success_seen = arm_fail_seen = done_seen = error_seen = False
     start_seen = False
@@ -266,6 +274,16 @@ def stream(session: Session, args, sock: socket.socket,
             start_seen
         tail = (tail + chunk)[-8192:]
         t = tail.decode("utf-8", "replace")
+        if pxlv:
+            if not start_seen and PXL_START in t:
+                start_seen = True
+                session.emit("stream", "pxlview started (banner seen)")
+            if not done_seen and PXL_DONE in t:
+                done_seen = True
+                session.emit("verdict", "pxlview finished (done marker)")
+            if not error_seen and PXL_FAIL in t:
+                error_seen = True
+            return
         if not start_seen and MARK_START_1160 in t:
             start_seen = True
             session.emit("stream", "payload started (banner seen)")
@@ -336,7 +354,19 @@ def stream(session: Session, args, sock: socket.socket,
 
         if not chunk:  # EOF
             session.emit("stream", "loader closed the connection (EOF)")
-            if success_seen:
+            if pxlv:
+                # pxlview is one-shot: done marker == clean exit. No
+                # rest-mode cycle, so no idempotent re-send semantics.
+                if done_seen:
+                    verdict = "FAIL" if error_seen else "SUCCESS"
+                elif error_seen:
+                    verdict = "FAIL"
+                else:
+                    # No terminal marker at all: treat as a transient drop
+                    if not lose_connection("EOF without terminal marker"):
+                        verdict = "STREAM_LOST"
+                    continue
+            elif success_seen:
                 verdict = "SUCCESS"
             elif arm_fail_seen:
                 # Terminal failure path reached (e.g. arm refused). In
@@ -365,6 +395,9 @@ def stream(session: Session, args, sock: socket.socket,
         gap_warned = False
         session.raw(chunk.decode("utf-8", "replace"))
         scan(chunk)
+        if pxlv and done_seen:
+            verdict = "FAIL" if error_seen else "SUCCESS"
+            break
         if success_seen and done_seen:
             verdict = "SUCCESS"
             break
