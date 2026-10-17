@@ -1,16 +1,20 @@
 /* pxlview on-screen terminal console (SDL2, CPU surface rendering).
  *
- * M0: stubs. M1: SDL window + single line. M2: scroller + pad input.
+ * M1: SDL window + static text.
+ * M2: line viewport + scrolling + pad/remote input + status bar.
  */
 #ifndef PXL_CONSOLE_UI_H
 #define PXL_CONSOLE_UI_H
 
 #include <stddef.h>
 
-int  ui_init(void);                          /* SDL video, current mode */
+int  ui_init(void);                          /* SDL video+joystick, current mode */
+void ui_set_title(const char *title);        /* header bar text */
 void ui_set_text(const char *text, size_t len);
 void ui_render(int *dirty);                  /* blit viewport, present */
-int  ui_handle_input(int *quit);             /* pump events; 1 = quit */
+/* Pump SDL events. Sets *quit (Start/R3/Quit), *recollect (L3),
+ * *dirty (viewport changed). */
+int  ui_handle_input(int *quit, int *recollect, int *dirty);
 void ui_fini(void);
 
 #endif /* PXL_CONSOLE_UI_H */
