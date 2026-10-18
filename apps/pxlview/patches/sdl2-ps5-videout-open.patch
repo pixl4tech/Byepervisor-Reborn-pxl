@@ -1,5 +1,5 @@
 diff --git a/src/video/ps5/SDL_ps5video.c b/src/video/ps5/SDL_ps5video.c
-index a62be0e..fe6e4c2 100644
+index a62be0e..3e6de06 100644
 --- a/src/video/ps5/SDL_ps5video.c
 +++ b/src/video/ps5/SDL_ps5video.c
 @@ -145,7 +145,7 @@ static int PS5_SetDisplayMode(_THIS, SDL_VideoDisplay * display,
@@ -7,21 +7,80 @@ index a62be0e..fe6e4c2 100644
          sceVideoOutClose(device_data->handle);
      }
 -    device_data->handle = sceVideoOutOpen(0xff, 0, 0, NULL);
-+    device_data->handle = sceVideoOutOpen(0xff, 1, 0, NULL);
++    device_data->handle = sceVideoOutOpen(0xff, 2, 0, NULL);
  
      if (sceKernelCreateEqueue(&device_data->evt_queue, "flip queue")) {
          return SDL_SetError("sceKernelCreateEqueue: %s", strerror(errno));
-@@ -203,11 +203,11 @@ static int PS5_VideoInit(_THIS)
+@@ -192,6 +192,7 @@ static int PS5_VideoInit(_THIS)
+     SDL_DisplayMode mode;
+     PS5_VideoAttr vattr;
+     void *vaddr = 0;
++    void *vaddr2 = 0;
+ 
+     SDL_zero(mode);
+     mode.format = SDL_PIXELFORMAT_ABGR8888;
+@@ -203,24 +204,37 @@ static int PS5_VideoInit(_THIS)
      memset(&vattr, 0, sizeof(vattr));
  
      sceSystemServiceHideSplashScreen();
 -    device_data->handle = sceVideoOutOpen(0xff, 0, 0, NULL);
-+    device_data->handle = sceVideoOutOpen(0xff, 1, 0, NULL);
++    device_data->handle = sceVideoOutOpen(0xff, 2, 0, NULL);
      if (device_data->handle < 0) {
          return SDL_SetError("sceVideoOutOpen: %s", strerror(errno));
      }
 -    device_data->memsize = 0x4000000;
-+    device_data->memsize = 0x2000000;
++    /* Two 16M buffers (1080p ABGR8888 needs 8.3MB each): a single 32M
++     * contiguous block is not always allocatable in the WebKit payload
++     * context, so the two page-flip buffers are allocated separately.
++     * Session (0xff,2,0) is the only sceVideoOutOpen form that succeeds
++     * while the VSH holds the main display session (11.60, verified). */
++    device_data->memsize = 0x1000000;
      if (sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
                                            &device_data->paddr)) {
          return SDL_SetError("sceKernelAllocateMainDirectMemory: %s",
+                             strerror(errno));
+     }
++    if (sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
++                                          &device_data->paddr2)) {
++        sceKernelReleaseDirectMemory(device_data->paddr, device_data->memsize);
++        return SDL_SetError("sceKernelAllocateMainDirectMemory(2nd): %s",
++                            strerror(errno));
++    }
+ 
+     if (sceKernelMapDirectMemory(&vaddr, device_data->memsize, 0x33, 0,
+-                                 device_data->paddr, 0x20000)) {
++                                 device_data->paddr, 0x20000) ||
++        sceKernelMapDirectMemory(&vaddr2, device_data->memsize, 0x33, 0,
++                                 device_data->paddr2, 0x20000)) {
+         return SDL_SetError("sceKernelMapDirectMemory: %s", strerror(errno));
+     }
+ 
+     device_data->vbuf[0].data = vaddr;
+-    device_data->vbuf[1].data = vaddr + (device_data->memsize / 2);
++    device_data->vbuf[1].data = vaddr2;
+ 
+     if (sceKernelCreateEqueue(&device_data->evt_queue, "flip queue")) {
+         return SDL_SetError("sceKernelCreateEqueue: %s", strerror(errno));
+@@ -273,6 +287,10 @@ static void PS5_VideoQuit(_THIS)
+     if (device_data->paddr) {
+         sceKernelReleaseDirectMemory(device_data->paddr, device_data->memsize);
+         device_data->paddr = 0;
++    }
++    if (device_data->paddr2) {
++        sceKernelReleaseDirectMemory(device_data->paddr2, device_data->memsize);
++        device_data->paddr2 = 0;
+         device_data->memsize = 0;
+     }
+     if (device_data->evt_queue) {
+diff --git a/src/video/ps5/SDL_ps5video.h b/src/video/ps5/SDL_ps5video.h
+index bc0a5f0..5f69d67 100644
+--- a/src/video/ps5/SDL_ps5video.h
++++ b/src/video/ps5/SDL_ps5video.h
+@@ -44,6 +44,7 @@ typedef struct PS5_DeviceData
+     PS5_VideoBuf vbuf[2];
+     struct kevent *evt_queue;
+     intptr_t paddr;
++    intptr_t paddr2;
+     size_t memsize;
+     SDL_Surface *surface;
+     PS5_Tilemap* tmap;

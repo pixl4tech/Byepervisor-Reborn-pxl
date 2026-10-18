@@ -75,7 +75,7 @@ clean:
 
 diag:
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -o $(BUILD)/pxlview-diag.elf src/diag.c -lSceVideoOut
+	$(CC) $(CFLAGS) -o $(BUILD)/pxlview-diag.elf src/diag.c src/pt.c src/elfldr_hw.c -lSceVideoOut -lSceSystemService -lSceUserService
 	@echo "built: $(BUILD)/pxlview-diag.elf"
 
 .PHONY: all clean diag
