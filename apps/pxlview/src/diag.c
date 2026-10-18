@@ -1918,6 +1918,23 @@ static void diag_app_hijack(void)
     if (syscore < 0)
         return;
 
+    /* Kill any already-running bigapp (LNC says "already running" and
+     * no fork happens, so the kqueue below would stall). hbldr does
+     * the same. */
+    extern int sceSystemServiceGetAppIdOfRunningBigApp(void);
+    extern int sceSystemServiceKillApp(int, int, int, int);
+    int bigapp = sceSystemServiceGetAppIdOfRunningBigApp();
+    printf("[diag]   running bigapp: 0x%x\n", bigapp);
+    if (bigapp > 0) {
+        if (sceSystemServiceKillApp(bigapp, -1, 0, 0))
+            printf("[diag]   KillApp: %s\n", strerror(errno));
+        else {
+            sleep(3);
+            printf("[diag]   bigapp 0x%x kill requested\n", bigapp);
+        }
+    }
+    fflush(stdout);
+
     /* kqueue tracking of SceSysCore forks. */
     int kq = kqueue();
     struct kevent evt = {0};
@@ -1935,13 +1952,15 @@ static void diag_app_hijack(void)
     pthread_create(&trd, 0, e6_launch_thread, 0);
     pthread_detach(trd);
 
-    /* Wait for the fork event. */
-    if (kevent(kq, 0, 0, &evt, 1, 0) < 0) {
-        printf("[diag]   kevent wait: %s\n", strerror(errno));
-        close(kq);
+    /* Wait for the fork event (with 30s timeout). */
+    struct timespec ktimeout = { 30, 0 };
+    int nkev = kevent(kq, 0, 0, &evt, 1, &ktimeout);
+    close(kq);
+    if (nkev <= 0) {
+        printf("[diag]   no fork event (nkev=%d, %s)\n", nkev,
+               nkev < 0 ? strerror(errno) : "timeout");
         return;
     }
-    close(kq);
     if (!(evt.fflags & NOTE_CHILD)) {
         printf("[diag]   no NOTE_CHILD in event (fflags=0x%x)\n", evt.fflags);
         return;
@@ -2000,6 +2019,13 @@ static void diag_app_hijack(void)
     printf("[diag]   stopped at eboot main (brk=0x%lx)\n", (unsigned long)brk);
     fflush(stdout);
 
+    /* Give the app process OUR stdout/stderr so pxlview's logs reach
+     * the console. */
+    if (elfldr_set_stdio(child, STDOUT_FILENO))
+        printf("[diag]   set_stdio: %s\n", strerror(errno));
+    else
+        printf("[diag]   stdio redirected to console\n");
+
     /* Load pxlview into the app process. */
     if (elfldr_exec(child, (uint8_t *)build_pxlview_embed_elf)) {
         printf("[diag]   elfldr_exec FAILED\n");
@@ -2009,9 +2035,23 @@ static void diag_app_hijack(void)
     printf("[diag]   pxlview loaded into app process %d — GO!\n", child);
     fflush(stdout);
 
-    /* pxlview now runs in the app context. Our job is done; keep the
-     * payload alive briefly, then exit. */
-    sleep(5);
+    /* Watch the process for 20s: alive? what state? */
+    for (int i = 1; i <= 20; i++) {
+        sleep(1);
+        intptr_t proc = kernel_get_proc(child);
+        if (!proc) {
+            printf("[diag]   t+%d: process %d GONE\n", i, child);
+            break;
+        }
+        /* proc state: p_stat at +0x330 (11.60); comm at +0x5dc */
+        uint32_t pstat = 0;
+        kernel_copyout(proc + 0x330, &pstat, 4);
+        char comm[16] = {0};
+        kernel_copyout(proc + 0x5dc, comm, 15);
+        printf("[diag]   t+%d: pid %d alive state=0x%x comm=%s\n",
+               i, child, pstat, comm);
+        fflush(stdout);
+    }
 }
 
 /* E5: launch a real video app (Disc Player 2) through the system

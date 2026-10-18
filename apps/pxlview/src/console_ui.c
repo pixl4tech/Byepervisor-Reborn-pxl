@@ -15,6 +15,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <ps5/kernel.h>
 
 #define SCALE        4            /* 5x7 -> 20x28 px per cell at 4K */
 #define MARGIN_X     64           /* px */
@@ -96,8 +98,51 @@ void ui_set_text(const char *text, size_t len)
     }
 }
 
+/* The eboot of a formally launched app opens its own VideoOut session
+ * before main() (that is what puts the app's splash on the display).
+ * A process may hold only one session, so our SDL init fails with
+ * EAGAIN. Close the eboot's session(s) first; SDL then opens its own.
+ *
+ * Detection (validated in diag.c find_our_vout_fd): struct file with
+ * fileops in the kernel text range and f_data in the kernel heap range,
+ * plus a session-shaped object (next-pointer at +0x08 in the same heap
+ * region). */
+static void close_eboot_vout_sessions(void)
+{
+    /* Full fd table dump first (diagnostic). */
+    for (int fd = 0; fd < 128; fd++) {
+        intptr_t file = kernel_get_proc_file(getpid(), fd);
+        if (!file)
+            continue;
+        uint64_t fop = 0, fdata = 0;
+        kernel_copyout((intptr_t)file + 0x00, &fop, 8);
+        kernel_copyout((intptr_t)file + 0x30, &fdata, 8);
+        printf("[pxlview-ui] fd=%d fop=0x%llx fdata=0x%llx\n", fd,
+               (unsigned long long)fop, (unsigned long long)fdata);
+    }
+
+    for (int fd = 0; fd < 128; fd++) {
+        intptr_t file = kernel_get_proc_file(getpid(), fd);
+        if (!file)
+            continue;
+        uint64_t fop = 0, fdata = 0;
+        if (kernel_copyout((intptr_t)file + 0x00, &fop, 8) ||
+            kernel_copyout((intptr_t)file + 0x30, &fdata, 8))
+            continue;
+        if (fop < 0xffffffff98000000ULL || fop >= 0xffffffff9b000000ULL)
+            continue;
+        if (fdata < 0xffffb60000000000ULL || fdata >= 0xffffb70000000000ULL)
+            continue;
+        int rc = close(fd);
+        printf("[pxlview-ui] closed eboot vout session fd=%d fdata=0x%llx rc=%d\n",
+               fd, (unsigned long long)fdata, rc);
+    }
+}
+
 int ui_init(void)
 {
+    close_eboot_vout_sessions();
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) {
         printf("[pxlview-ui] SDL_Init: %s\n", SDL_GetError());
         return -1;

@@ -532,3 +532,41 @@ int sceKernelGetAppState(int app_id, int*, int*);
 4. Чистый handoff дисплея назад в VSH при выходе pxlview (чтобы не чёрный экран)
 5. Input (DualSense) в контексте приложения
 6. Коммит состояния dev-apps
+
+## 16. ⭐⭐⭐⭐ E6.1: pxlview UI В КОНТЕКСТЕ ПРИЛОЖЕНИЯ (11.60)
+
+### Фиксы, приведшие к успеху
+1. **SDL: display 0 с fallback на 2** (`PS5_VideoOutOpenAny`):
+   - в контексте запущенного приложения display 0 = дисплей приложения
+   - `(0xff, 2, 0)` в app-контексте давал EAGAIN ("вторичный" дисплей недоступен)
+   - патч SDL2 регенерирован (110 строк), base = ee4c47d
+2. **close_eboot_vout_sessions()** в console_ui.c: eboot приложения открывает
+   VideoOut-сессию до main(); close(fd) по ней — rc=-1 (EBUSY), но с display 0
+   это уже не критично
+3. **KillApp перед запуском** (running bigapp → sceSystemServiceKillApp) —
+   иначе LaunchApp не форкает новый процесс (LNC "already running")
+4. **stdio pxlview → наш TCP** (elfldr_set_stdio) — логи видны!
+5. **kevent timeout 30s** — без него diag зависал при "already running"
+
+### ⭐ РЕЗУЛЬТАТ
+```
+[pxlview] starting v0.1.0
+[pxlview] kernel access ok
+[pxlview] collected 3824 bytes of panel text (procs=48 nor=1 hv=0)
+[pxlview-ui] window 1920x1080 fmt=0x16762004
+[pxlview-ui] joystick 0: User1
+[diag]   t+1..t+20: pid 691 alive state=0x0 comm=SceDiscPlayer
+```
+- **ОКНО СОЗДАНО** (display 0), **ГЕЙМПАД ОТКРЫТ** (User1 = DualSense!)
+- pxlview живёт 20+ секунд в процессе приложения
+- notify pxlview работает (виден Debug-панель VSH: "pxlview v0.1.0: display FAILED"
+  в проваленном ране)
+- Чистый выход приложения → **меню VSH восстанавливается САМО** (без re-plug HDMI)
+
+### Следующие шаги
+1. Убрать E5/LAUNCH TEST после E6 (не переключать дисплей) — чистый ран pxlview
+2. Удлиннить жизнь pxlview (сейчас diag убивает payload через ~30с)
+3. Проверить, что видно на экране (UI pxlview с панелями?)
+4. Input: DualSense уже открыт — проверить навигацию панелей
+5. Перенести hijack-механизм из diag в основную жизнь pxlview
+   (самозапуск: payload сам запускает апп, хиджакит себя)
