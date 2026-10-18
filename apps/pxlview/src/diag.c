@@ -2081,6 +2081,8 @@ static void *launch_thread(void *arg)
     return 0;
 }
 
+static void diag_launch_test(void) __attribute__((unused));
+
 static void diag_launch_test(void)
 {
     sec("19. LAUNCH TEST: sceSystemServiceLaunchApp(NPXS40140)");
@@ -2218,10 +2220,6 @@ int main(void)
     diag_dead_session();
     diag_launch_probe();
     diag_remote_mount();
-    diag_app_hijack();
-    diag_launch_test();
-
-    /* FLIP MASTER TAKEOVER FIRST (freshest pool, decisive test). */
     diag_flip_master();
 
     /* VIDEO TESTS (direct-memory pool is freshest now): */
@@ -2242,6 +2240,11 @@ int main(void)
     diag_fs();
     diag_rootdir();
     diag_prison();
+
+    /* APP HIJACK LAST: it launches a real app and loads pxlview into it;
+     * nothing after it may steal the display. */
+    diag_app_hijack();
+
     printf("[diag] all done\n");
     printf("[pxlview] done\n");
     return 0;

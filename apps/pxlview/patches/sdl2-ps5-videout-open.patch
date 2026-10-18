@@ -1,5 +1,5 @@
 diff --git a/src/video/ps5/SDL_ps5video.c b/src/video/ps5/SDL_ps5video.c
-index a62be0e..1b91364 100644
+index a62be0e..c69d7d6 100644
 --- a/src/video/ps5/SDL_ps5video.c
 +++ b/src/video/ps5/SDL_ps5video.c
 @@ -64,6 +64,18 @@ static int PS5_CreateWindowFramebuffer(_THIS, SDL_Window *window,
@@ -41,7 +41,7 @@ index a62be0e..1b91364 100644
  
      SDL_zero(mode);
      mode.format = SDL_PIXELFORMAT_ABGR8888;
-@@ -203,24 +219,39 @@ static int PS5_VideoInit(_THIS)
+@@ -203,24 +219,43 @@ static int PS5_VideoInit(_THIS)
      memset(&vattr, 0, sizeof(vattr));
  
      sceSystemServiceHideSplashScreen();
@@ -50,42 +50,51 @@ index a62be0e..1b91364 100644
      if (device_data->handle < 0) {
          return SDL_SetError("sceVideoOutOpen: %s", strerror(errno));
      }
--    device_data->memsize = 0x4000000;
-+    /* Two 16M buffers (1080p ABGR8888 needs 8.3MB each): a single 32M
-+     * contiguous block is not always allocatable in the WebKit payload
-+     * context, so the two page-flip buffers are allocated separately.
-+     * Display 0 is used when running inside a formally launched app
-+     * (the app owns the primary display); display 2 is the fallback
-+     * for the plain WebKit payload context where the VSH holds
-+     * display 0 (11.60, verified). */
-+    device_data->memsize = 0x1000000;
++    /* Buffer strategy: a single 64M block (reference layout, vbuf[1] =
++     * vaddr+32M) first — the app context can usually allocate it and it
++     * matches the known-good driver exactly. Fall back to two 16M
++     * blocks for the WebKit payload context where 64M fails. */
+     device_data->memsize = 0x4000000;
++    device_data->paddr2 = 0;
      if (sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
-                                           &device_data->paddr)) {
-         return SDL_SetError("sceKernelAllocateMainDirectMemory: %s",
-                             strerror(errno));
-     }
-+    if (sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
-+                                          &device_data->paddr2)) {
-+        sceKernelReleaseDirectMemory(device_data->paddr, device_data->memsize);
-+        return SDL_SetError("sceKernelAllocateMainDirectMemory(2nd): %s",
-+                            strerror(errno));
-+    }
- 
-     if (sceKernelMapDirectMemory(&vaddr, device_data->memsize, 0x33, 0,
--                                 device_data->paddr, 0x20000)) {
-+                                 device_data->paddr, 0x20000) ||
-+        sceKernelMapDirectMemory(&vaddr2, device_data->memsize, 0x33, 0,
-+                                 device_data->paddr2, 0x20000)) {
-         return SDL_SetError("sceKernelMapDirectMemory: %s", strerror(errno));
+-                                          &device_data->paddr)) {
+-        return SDL_SetError("sceKernelAllocateMainDirectMemory: %s",
+-                            strerror(errno));
+-    }
+-
+-    if (sceKernelMapDirectMemory(&vaddr, device_data->memsize, 0x33, 0,
++                                          &device_data->paddr) ||
++        sceKernelMapDirectMemory(&vaddr, device_data->memsize, 0x33, 0,
+                                  device_data->paddr, 0x20000)) {
+-        return SDL_SetError("sceKernelMapDirectMemory: %s", strerror(errno));
++        device_data->memsize = 0x1000000;
++        device_data->paddr = 0;
++        if (sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
++                                              &device_data->paddr) ||
++            sceKernelAllocateMainDirectMemory(device_data->memsize, 0x20000, 3,
++                                              &device_data->paddr2)) {
++            if (device_data->paddr)
++                sceKernelReleaseDirectMemory(device_data->paddr,
++                                             device_data->memsize);
++            return SDL_SetError("sceKernelAllocateMainDirectMemory: %s",
++                                strerror(errno));
++        }
++        if (sceKernelMapDirectMemory(&vaddr, device_data->memsize, 0x33, 0,
++                                     device_data->paddr, 0x20000) ||
++            sceKernelMapDirectMemory(&vaddr2, device_data->memsize, 0x33, 0,
++                                     device_data->paddr2, 0x20000)) {
++            return SDL_SetError("sceKernelMapDirectMemory: %s",
++                                strerror(errno));
++        }
      }
  
      device_data->vbuf[0].data = vaddr;
 -    device_data->vbuf[1].data = vaddr + (device_data->memsize / 2);
-+    device_data->vbuf[1].data = vaddr2;
++    device_data->vbuf[1].data = device_data->paddr2 ? vaddr2 : vaddr + 0x2000000;
  
      if (sceKernelCreateEqueue(&device_data->evt_queue, "flip queue")) {
          return SDL_SetError("sceKernelCreateEqueue: %s", strerror(errno));
-@@ -273,6 +304,10 @@ static void PS5_VideoQuit(_THIS)
+@@ -273,6 +308,10 @@ static void PS5_VideoQuit(_THIS)
      if (device_data->paddr) {
          sceKernelReleaseDirectMemory(device_data->paddr, device_data->memsize);
          device_data->paddr = 0;

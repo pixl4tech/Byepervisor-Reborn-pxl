@@ -245,6 +245,46 @@ int ui_handle_input(int *quit, int *recollect, int *dirty)
     static int frames = 0;
     SDL_Event e;
 
+    /* Auto-repeat for held scroll buttons: first repeat after 400ms,
+     * then every 80ms (SDL posts only the initial JOYBUTTONDOWN). */
+    enum { RB_UP = 11, RB_DOWN = 12, RB_PU = 9, RB_PD = 10, RB_MAX = 16 };
+    static int rb_down[RB_MAX];    /* ticks when the button went down */
+    static int rb_last[RB_MAX];    /* ticks of the last repeat action */
+    static SDL_Joystick *repeat_js = 0;
+    int now = SDL_GetTicks();
+    if (SDL_NumJoysticks() > 0 && !repeat_js)
+        repeat_js = SDL_JoystickOpen(0);
+    for (int b = 0; b < RB_MAX; b++) {
+        int held = repeat_js ? SDL_JoystickGetButton(repeat_js, b) == SDL_PRESSED : 0;
+        if (held && !rb_down[b]) {
+            rb_down[b] = now;
+            rb_last[b] = now;
+        } else if (!held) {
+            rb_down[b] = 0;
+        } else if (now - rb_down[b] > 400 && now - rb_last[b] > 80) {
+            rb_last[b] = now;
+            switch (b) {
+            case RB_UP:
+                if (g_scroll > 0) { g_scroll--; *dirty = 1; }
+                break;
+            case RB_DOWN:
+                if (g_scroll < g_nlines) { g_scroll++; *dirty = 1; }
+                break;
+            case RB_PU:
+                g_scroll -= g_vlines;
+                if (g_scroll < 0) g_scroll = 0;
+                *dirty = 1;
+                break;
+            case RB_PD:
+                g_scroll += g_vlines;
+                *dirty = 1;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_QUIT:
