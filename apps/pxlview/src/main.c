@@ -9,12 +9,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 #include "version.h"
 #include "kmem.h"
 #include "panels.h"
 #include "console_ui.h"
 #include "notify.h"
+
+/* Clean exit on SIGTERM (so the VideoOut session is released via
+ * SDL_Quit instead of leaking in the driver when the app manager
+ * kills the process). */
+static volatile sig_atomic_t g_sigterm = 0;
+static void on_sigterm(int s) { (void)s; g_sigterm = 1; }
 
 static void finish(int code)
 {
@@ -74,7 +81,12 @@ int main(int argc, char **argv)
 
     int quit = 0;
     int dirty = 1;
+    signal(SIGTERM, on_sigterm);
     while (!quit) {
+        if (g_sigterm) {
+            printf("[pxlview] SIGTERM — clean exit\n");
+            quit = 1;
+        }
         int recollect = 0;
         ui_handle_input(&quit, &recollect, &dirty);
         if (recollect && !quit) {

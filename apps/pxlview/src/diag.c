@@ -1918,6 +1918,21 @@ static void diag_app_hijack(void)
     if (syscore < 0)
         return;
 
+    /* Clean-exit any leftover pxlview-in-app from a previous run
+     * (SIGTERM -> SDL_Quit -> VideoOut session released). */
+    for (int p = 1; p < 128; p++) {
+        intptr_t proc = kernel_get_proc(p);
+        if (!proc)
+            continue;
+        char comm[16] = {0};
+        if (kernel_copyout(proc + 0x5dc, comm, 15) == 0 &&
+            !strcmp(comm, "SceDiscPlayer")) {
+            kill(p, SIGTERM);
+            printf("[diag]   SIGTERM to leftover SceDiscPlayer pid %d\n", p);
+        }
+    }
+    sleep(1);
+
     /* Kill any already-running bigapp (LNC says "already running" and
      * no fork happens, so the kqueue below would stall). hbldr does
      * the same. */
@@ -2035,7 +2050,8 @@ static void diag_app_hijack(void)
     printf("[diag]   pxlview loaded into app process %d — GO!\n", child);
     fflush(stdout);
 
-    /* Watch the process for 20s: alive? what state? */
+    /* Watch the process for 20s: alive? what state? Then SIGTERM for a
+     * clean pxlview exit (releases the VideoOut session). */
     for (int i = 1; i <= 20; i++) {
         sleep(1);
         intptr_t proc = kernel_get_proc(child);
@@ -2051,6 +2067,13 @@ static void diag_app_hijack(void)
         printf("[diag]   t+%d: pid %d alive state=0x%x comm=%s\n",
                i, child, pstat, comm);
         fflush(stdout);
+    }
+    kill(child, SIGTERM);
+    printf("[diag]   SIGTERM sent to %d (clean pxlview exit)\n", child);
+    sleep(3);
+    if (kernel_get_proc(child)) {
+        kill(child, SIGKILL);
+        printf("[diag]   SIGKILL fallback\n");
     }
 }
 
